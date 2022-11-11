@@ -28,7 +28,13 @@ module.exports = {
     gasPrice: 100,
     showTimeSpent: true,
   },
-
+  etherscan: {
+    apiKey: {
+      rinkeby: process.env.ETHERSCAN_API_KEY || '3JSHQXPY5D3NENRIUJDTVJ9WD4NXG16TMR',
+      bsc: process.env.ETHERSCAN_API_KEY || 'IQTUHGGZEGHS1R9NZV97I3N8A16PWN9G9M',
+      goerli: process.env.ETHERSCAN_API_KEY || '3JSHQXPY5D3NENRIUJDTVJ9WD4NXG16TMR',
+    },
+  },
   networks: {
     development: {
       url: "http://localhost:24012/rpc",
