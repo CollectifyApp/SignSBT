@@ -20,6 +20,7 @@ contract SignModeToken is ERC721S, ERC2981 {
     MintTime public privateMintTime;
     MintTime public publicMintTime;
     TimeZone public timeZone;
+    address public tokenContract;
 
     struct MintTime {
         uint64 startAt;
@@ -27,7 +28,7 @@ contract SignModeToken is ERC721S, ERC2981 {
     }
 
     struct TimeZone {
-        uint8 offset;
+        int8 offset;
         string text;
     }
 
@@ -45,6 +46,11 @@ contract SignModeToken is ERC721S, ERC2981 {
         string price;
     }
 
+    struct mintTimeStruct {
+        MintTime privateMintTime;
+        MintTime publicMintTime;
+    }
+
     mapping(address => uint256) internal privateClaimList;
     mapping(address => uint256) internal publicClaimList;
     mapping(uint256 => SVGInfo) public svgInfoList;
@@ -60,8 +66,8 @@ contract SignModeToken is ERC721S, ERC2981 {
         string memory _unit,
         uint96 royaltyFraction,
         TimeZone memory _timezone,
-        MintTime memory _privateMintTime,
-        MintTime memory _publicMintTime
+        mintTimeStruct memory _mintTime,
+        address _tokenContract
     ) ERC721S(name, symbol) {
         description = _description;
         mintPrice = _mintPrice;
@@ -69,8 +75,9 @@ contract SignModeToken is ERC721S, ERC2981 {
         maxCountPerAddress = _maxCountPerAddress;
         unit = _unit;
         timeZone = _timezone;
-        privateMintTime = _privateMintTime;
-        publicMintTime = _publicMintTime;
+        privateMintTime = _mintTime.privateMintTime;
+        publicMintTime = _mintTime.publicMintTime;
+        tokenContract = _tokenContract;
         _setDefaultRoyalty(_msgSender(), royaltyFraction);
     }
 
@@ -145,37 +152,84 @@ contract SignModeToken is ERC721S, ERC2981 {
         description = _description;
     }
 
-    function privateMint(uint256 quantity, string memory _from, address to, string memory receiver, string memory _description, string memory timestamp, string memory priceWithDecimal, uint256 whiteQuantity, bytes32[] calldata merkleProof) external payable {
+    function revork(uint256 tokenId) public onlyOwner {
+        _burn(tokenId);
+    }
+
+    function privateMint(
+        uint256 _quantity,
+        string memory _from,
+        address to,
+        string memory receiver,
+        string memory _description,
+        string memory timestamp,
+        string memory priceWithDecimal,
+        uint256 whiteQuantity,
+        bytes32[] calldata merkleProof
+    ) external payable {
+        uint256 quantity = _quantity;
+        uint256 _whiteQuantity = whiteQuantity;
+        address destination = to;
+        string memory origin = _from;
+        string memory _receiver = receiver;
+        string memory _timestamp = timestamp;
+        string memory descInfo = _description;
+        string memory _priceWithDecimal = priceWithDecimal;
+        bytes32[] calldata _merkleProof = merkleProof;
         require(block.timestamp >= privateMintTime.startAt && block.timestamp <= privateMintTime.endAt, "error: 10000 time is not allowed");
-        uint256 supply = totalSupply();
-        require(supply + quantity <= maxSupply, "error: 10001 supply exceeded");
-        require(mintPrice * quantity <= msg.value, "error: 10002 price insufficient");
+        require(totalSupply() + quantity <= maxSupply, "error: 10001 supply exceeded");
         address claimAddress = _msgSender();
-        require(privateClaimList[claimAddress] + quantity <= whiteQuantity, "error:10003 already claimed");
-        require(quantity <= whiteQuantity, "error: 10004 quantity is not allowed");
+        require(privateClaimList[claimAddress] + quantity <= _whiteQuantity, "error:10003 already claimed");
+        require(quantity <= _whiteQuantity, "error: 10004 quantity is not allowed");
         require(
-            MerkleProof.verify(merkleProof, merkleRoot, keccak256(abi.encodePacked(claimAddress, whiteQuantity))),
+            MerkleProof.verify(_merkleProof, merkleRoot, keccak256(abi.encodePacked(claimAddress, _whiteQuantity))),
             "error:10004 not in the whitelist"
         );
-        string memory price = string(abi.encodePacked(priceWithDecimal, ' ', unit));
-        SVGInfo memory svgInfo = SVGInfo(_from, to, receiver, _description, timestamp, price);
-        _safeMint(claimAddress, quantity, svgInfo);
+        uint256 amount = mintPrice * quantity;
+        if (tokenContract == address(0)) {
+            require(amount <= msg.value, "error: 10002 price insufficient");
+        } else {
+            (bool success, bytes memory data) = tokenContract.call(abi.encodeWithSelector(0x23b872dd, claimAddress, address(this), amount));
+            require(
+                success && (data.length == 0 || abi.decode(data, (bool))),
+                "error: 10002 price insufficient"
+            );
+        }
+        string memory price = string(abi.encodePacked(_priceWithDecimal, ' ', unit));
+        SVGInfo memory svgInfo = SVGInfo(origin, destination, _receiver, descInfo, _timestamp, price);
+        _safeMint(destination, quantity, svgInfo);
         privateClaimList[claimAddress] += quantity;
         _privateMintCount = _privateMintCount + quantity;
     }
 
     function publicMint(uint256 quantity, string memory _from, address to, string memory receiver, string memory _description, string memory timestamp, string memory priceWithDecimal) external payable {
+        uint256 _quantity = quantity;
+        address destination = to;
+        string memory origin = _from;
+        string memory _receiver = receiver;
+        string memory _timestamp = timestamp;
+        string memory descInfo = _description;
+        string memory _priceWithDecimal = priceWithDecimal;
         require(block.timestamp >= publicMintTime.startAt && block.timestamp <= publicMintTime.endAt, "error: 10000 time is not allowed");
-        require(quantity <= maxCountPerAddress, "error: 10004 max per address exceeded");
+        require(_quantity <= maxCountPerAddress, "error: 10004 max per address exceeded");
         uint256 supply = totalSupply();
-        require(supply + quantity <= maxSupply, "error: 10001 supply exceeded");
-        require(mintPrice * quantity <= msg.value, "error: 10002 price insufficient");
+        require(supply + _quantity <= maxSupply, "error: 10001 supply exceeded");
         address claimAddress = _msgSender();
-        require(publicClaimList[claimAddress] + quantity <= maxCountPerAddress, "error:10003 already claimed");
-        string memory price = string(abi.encodePacked(priceWithDecimal, ' ', unit));
-        SVGInfo memory svgInfo = SVGInfo(_from, to, receiver, _description, timestamp, price);
-        _safeMint(claimAddress, quantity, svgInfo);
-        publicClaimList[claimAddress] += quantity;
+        require(publicClaimList[claimAddress] + _quantity <= maxCountPerAddress, "error:10003 already claimed");
+        uint256 amount = mintPrice * _quantity;
+        if (tokenContract == address(0)) {
+            require(amount <= msg.value, "error: 10002 price insufficient");
+        } else {
+            (bool success, bytes memory data) = tokenContract.call(abi.encodeWithSelector(0x23b872dd, claimAddress, address(this), amount));
+            require(
+                success && (data.length == 0 || abi.decode(data, (bool))),
+                "error: 10002 price insufficient"
+            );
+        }
+        string memory price = string(abi.encodePacked(_priceWithDecimal, ' ', unit));
+        SVGInfo memory svgInfo = SVGInfo(origin, destination, _receiver, descInfo, _timestamp, price);
+        _safeMint(destination, _quantity, svgInfo);
+        publicClaimList[claimAddress] += _quantity;
     }
 
     function _safeMint(
@@ -212,7 +266,15 @@ contract SignModeToken is ERC721S, ERC2981 {
 
     // This allows the contract owner to withdraw the funds from the contract.
     function withdraw(uint amt) external onlyOwner {
-        (bool sent, ) = payable(_msgSender()).call{value: amt}("");
-        require(sent, "GG: Failed to withdraw Ether");
+        if (tokenContract == address(0)) {
+            (bool sent, ) = payable(_msgSender()).call{value: amt}("");
+            require(sent, "GG: Failed to withdraw Ether");
+        } else {
+            (bool success, bytes memory data) = tokenContract.call(abi.encodeWithSelector(0xa9059cbb, _msgSender(), amt));
+            require(
+                success && (data.length == 0 || abi.decode(data, (bool))),
+                "GG: Failed to withdraw Ether"
+            );
+        }
     }
 }
