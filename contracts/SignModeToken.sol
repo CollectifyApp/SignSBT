@@ -195,11 +195,11 @@ contract SignModeToken is ERC721S, ERC2981 {
                 "error: 10002 price insufficient"
             );
         }
+        privateClaimList[claimAddress] += quantity;
+        _privateMintCount = _privateMintCount + quantity;
         string memory price = string(abi.encodePacked(_priceWithDecimal, ' ', unit));
         SVGInfo memory svgInfo = SVGInfo(origin, destination, _receiver, descInfo, _timestamp, price);
         _safeMint(destination, quantity, svgInfo);
-        privateClaimList[claimAddress] += quantity;
-        _privateMintCount = _privateMintCount + quantity;
     }
 
     function publicMint(uint256 quantity, string memory _from, address to, string memory receiver, string memory _description, string memory timestamp, string memory priceWithDecimal) external payable {
@@ -226,10 +226,10 @@ contract SignModeToken is ERC721S, ERC2981 {
                 "error: 10002 price insufficient"
             );
         }
+        publicClaimList[claimAddress] += _quantity;
         string memory price = string(abi.encodePacked(_priceWithDecimal, ' ', unit));
         SVGInfo memory svgInfo = SVGInfo(origin, destination, _receiver, descInfo, _timestamp, price);
         _safeMint(destination, _quantity, svgInfo);
-        publicClaimList[claimAddress] += _quantity;
     }
 
     function _safeMint(
